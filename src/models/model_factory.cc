@@ -6,6 +6,7 @@
 #include "ctranslate2/models/wav2vec2.h"
 #include "ctranslate2/models/wav2vec2bert.h"
 #include "ctranslate2/models/transformer.h"
+#include "ctranslate2/models/whisper_nmt.h"
 
 namespace ctranslate2 {
   namespace models {
@@ -22,6 +23,7 @@ namespace ctranslate2 {
       register_model<TransformerEncoderModel>("TransformerEncoderSpec");
 
       register_model<WhisperModel>("WhisperSpec");
+      register_model<WhisperNmtModel>("WhisperNmtSpec");
 
       register_model<Wav2Vec2Model>("Wav2Vec2Spec");
 

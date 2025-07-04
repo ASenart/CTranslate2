@@ -363,6 +363,70 @@ namespace ctranslate2 {
         padder->add_padding(output);
     }
 
+    void TransformerEncoder::operator()(const StorageView& input,
+                                        const std::vector<StorageView>& language_ids,
+                                        const std::vector<StorageView>& eos_ids,
+                                        const StorageView* lengths,
+                                        StorageView& output) {
+      PROFILE("TransformerEncoder");
+      StorageView lang_input(output.dtype(), output.device());
+      _embeddings(language_ids, lang_input);
+
+      if (_embeddings_scale)
+        ops::Mul()(lang_input, *_embeddings_scale, lang_input);
+      if (_position_encoder)
+        (*_position_encoder)(lang_input);
+      if (_layernorm_embedding)
+        (*_layernorm_embedding)(lang_input, lang_input);
+
+      StorageView eos_input(output.dtype(), output.device());
+      _embeddings(eos_ids, eos_input);
+
+      if (_embeddings_scale)
+        ops::Mul()(eos_input, *_embeddings_scale, eos_input);
+      if (_position_encoder)
+        (*_position_encoder)(eos_input);
+      if (_layernorm_embedding)
+        (*_layernorm_embedding)(eos_input, eos_input);
+
+      // Concatenate the language embeddings and input and eos embeddings.
+      StorageView input_concat(output.dtype(), output.device());
+      ops::Concat(1)({&lang_input, &input, &eos_input}, input_concat);
+
+      StorageView hidden = input_concat;
+      const dim_t max_time = input_concat.dim(1);
+
+      // Remove padding to reduce the amount of computation.
+      std::unique_ptr<Padder> padder;
+      std::unique_ptr<StorageView> lengths_mask;
+
+      if (lengths) {
+        if (Padder::allow_padding_removal(output.device(), _compute_type)) {
+          padder = std::make_unique<Padder>(*lengths, max_time);
+          padder->remove_padding(hidden);
+        }
+
+        int num_heads = _num_heads;
+        if (_tensor_parallel) {
+          num_heads = SAFE_DIVIDE(num_heads, ScopedMPISetter::getNRanks());
+        }
+        lengths_mask = std::make_unique<StorageView>(
+          layers::MultiHeadAttention::prepare_length_mask(*lengths, num_heads, max_time));
+      }
+
+      StorageView position_bias(output.dtype(), output.device());
+
+      for (size_t l = 0; l < _layers.size(); ++l) {
+        (*_layers[l])(hidden, lengths_mask.get(), output, padder.get(), &position_bias);
+        if (l + 1 < _layers.size())
+          hidden = std::move(output);
+      }
+      if (_output_norm)
+        (*_output_norm)(output, output);
+      if (padder)
+        padder->add_padding(output);
+    }
+
 
     static std::unique_ptr<Alibi> make_alibi(const models::Model& model, const std::string& scope) {
       const bool use_alibi = model.get_flag_with_default(scope + "/alibi", false);

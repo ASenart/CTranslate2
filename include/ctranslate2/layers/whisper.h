@@ -70,5 +70,25 @@ namespace ctranslate2 {
                                     StorageView& logits);
     };
 
+    class WhisperConnector :public Layer {
+    public:
+      WhisperConnector(const models::Model& model,
+                        const std::string& scope);
+
+      void operator()(const StorageView& features, StorageView& output) const;
+
+      DataType output_type() const override {
+        return _lin_2.output_type();
+      }
+
+      dim_t output_size() const override {
+        return _lin_2.output_size();
+      }
+
+    private:
+      const ops::ActivationType _activation_type;
+      const Dense _lin_1;
+      const Dense _lin_2;
+    };
   }
 }

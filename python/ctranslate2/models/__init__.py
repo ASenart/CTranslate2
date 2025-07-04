@@ -7,8 +7,10 @@ try:
         Wav2Vec2,
         Wav2Vec2Bert,
         Whisper,
+        WhisperNmt,
         WhisperGenerationResult,
         WhisperGenerationResultAsync,
+        WhisperNmtGenerationResult,
     )
 except ImportError as e:
     # Allow using the Python package without the compiled extension.

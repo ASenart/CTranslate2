@@ -134,6 +134,12 @@ namespace ctranslate2 {
                       const StorageView* lengths,
                       StorageView& output) override;
 
+      void operator()(const StorageView& input,
+                      const std::vector<StorageView>& language_ids,
+                      const std::vector<StorageView>& target_ids,
+                      const StorageView* lengths,
+                      StorageView& output);
+
       size_t num_input_features() const override {
         return _embeddings.num_inputs();
       }

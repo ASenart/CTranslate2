@@ -1,11 +1,10 @@
 """Declares specification of the Transformer model."""
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 
 import numpy as np
 
-from ctranslate2.specs import attention_spec, common_spec, model_spec
-
+from ctranslate2.specs import attention_spec, common_spec, model_spec, transformer_spec
 
 class TransformerEncoderSpec(model_spec.LayerSpec):
     def __init__(
@@ -365,161 +364,64 @@ class TransformerConfig(model_spec.SequenceToSequenceModelConfig):
         """
         super().__init__(layer_norm_epsilon=layer_norm_epsilon, **kwargs)
 
-
-class TransformerSpec(model_spec.SequenceToSequenceModelSpec):
-    """Describes a Transformer model.
-
-    The specification is invariant to hidden dimensions but requires to
-    explicitly set the number of layers and attention heads.
-    """
+class WhisperNmtConfig(model_spec.SequenceToSequenceModelConfig):
+    """Configuration for the Whisper model."""
 
     def __init__(
-        self, encoder: TransformerEncoderSpec, decoder: TransformerDecoderSpec
+            self,
+            suppress_ids: Optional[List[int]] = None,
+            suppress_ids_begin: Optional[List[int]] = None,
+            lang_ids: Optional[List[int]] = None,
+            alignment_heads: Optional[List[Tuple[int, int]]] = None,
     ):
-        """Initializes a Transformer model specification.
-
-        Args:
-          encoder: The encoder specification.
-          decoder: The decoder specification.
-        """
-        if not isinstance(encoder, TransformerEncoderSpec):
-            raise TypeError("encoder argument must be a TransformerEncoderSpec")
-        if not isinstance(decoder, TransformerDecoderSpec):
-            raise TypeError("decoder argument must be a TransformerDecoderSpec")
-
-        super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self._config.add_attribute(
-            "multi_query_attention", self.encoder.multi_query_attention
-        )
-
-    @classmethod
-    def from_config(
-        cls,
-        num_layers: Union[int, Tuple[int, int]],
-        num_heads: int,
-        with_relative_position: bool = False,
-        pre_norm: bool = True,
-        no_final_norm: bool = False,
-        activation: common_spec.Activation = common_spec.Activation.RELU,
-        alignment_layer: int = -1,
-        alignment_heads: int = 1,
-        num_source_embeddings: int = 1,
-        embeddings_merge: common_spec.EmbeddingsMerge = common_spec.EmbeddingsMerge.CONCAT,
-        layernorm_embedding: bool = False,
-        relative_attention_bias: bool = False,
-        ffn_glu: bool = False,
-        rms_norm: bool = False,
-        multi_query_attention: bool = False,
-    ):
-        """Creates a Transformer model specification.
-
-        Args:
-          num_layers: Number of encoder and decoder layers, or a 2-tuple if the
-            number is different.
-          num_heads: Number of attention heads.
-          with_relative_position: Use relative position representations in the self-attention
-            layers as described in https://arxiv.org/abs/1803.02155.
-          pre_norm: Enable the pre-norm Transformer architecture.
-          no_final_norm: Disable the final layer norm in the pre-norm architecture.
-          activation: Activation to apply in the feed-forward network.
-          alignment_layer: Layer index selected for alignment.
-          alignment_heads: Number of attention heads selected for alignment.
-          num_source_embeddings: Number of source embeddings.
-          embeddings_merge: When :obj:`num_source_embeddings` > 1, specify how the
-            embeddings are merged.
-          layernorm_embedding: Apply layer normalization after the embedding layer.
-          relative_attention_bias: Use relative attention bias in the self-attention
-            layers as described in the T5 paper https://arxiv.org/abs/1910.10683.
-          ffn_glu: Use gated linear units in the FFN layer as described in
-            https://arxiv.org/abs/2002.05202.
-          rms_norm: Use the root mean square layer normalization.
-          multi_query_attention: Use multi-query attention.
-        """
-        if isinstance(num_layers, (list, tuple)):
-            num_encoder_layers, num_decoder_layers = num_layers
-        else:
-            num_encoder_layers, num_decoder_layers = num_layers, num_layers
-
-        encoder = TransformerEncoderSpec(
-            num_encoder_layers,
-            num_heads,
-            pre_norm=pre_norm,
-            no_final_norm=no_final_norm,
-            activation=activation,
-            num_source_embeddings=num_source_embeddings,
-            embeddings_merge=embeddings_merge,
-            layernorm_embedding=layernorm_embedding,
-            relative_position=with_relative_position,
-            relative_attention_bias=relative_attention_bias,
-            ffn_glu=ffn_glu,
-            rms_norm=rms_norm,
-            multi_query_attention=multi_query_attention,
-        )
-
-        decoder = TransformerDecoderSpec(
-            num_decoder_layers,
-            num_heads,
-            pre_norm=pre_norm,
-            no_final_norm=no_final_norm,
-            activation=activation,
-            layernorm_embedding=layernorm_embedding,
-            relative_position=with_relative_position,
-            relative_attention_bias=relative_attention_bias,
-            alignment_layer=alignment_layer,
+        super().__init__(
+            suppress_ids=suppress_ids,
+            suppress_ids_begin=suppress_ids_begin,
+            lang_ids=lang_ids,
             alignment_heads=alignment_heads,
-            ffn_glu=ffn_glu,
-            rms_norm=rms_norm,
-            multi_query_attention=multi_query_attention,
         )
 
-        return cls(encoder, decoder)
+class WhisperEncoderSpec(model_spec.LayerSpec):
+    def __init__(self, num_layers, num_heads):
+        self.num_heads = np.dtype("int16").type(num_heads)
+        self.conv1 = common_spec.Conv1DSpec()
+        self.conv2 = common_spec.Conv1DSpec()
+        self.position_encodings = transformer_spec.PositionEncoderSpec()
+        self.layer_norm = common_spec.LayerNormSpec()
+        self.layer = [
+            transformer_spec.TransformerEncoderLayerSpec() for _ in range(num_layers)
+        ]
 
-    @property
-    def name(self):
-        return "TransformerSpec"
-
-    @property
-    def revision(self):
-        return 7
-
-    def get_default_config(self):
-        return TransformerConfig()
-
-    def get_source_vocabulary_size(self):
-        return [spec.weight.shape[0] for spec in self.encoder.embeddings]
-
-    def get_target_vocabulary_size(self):
-        return self.decoder.embeddings.weight.shape[0]
-
+class WhisperNmtConnectorSpec(model_spec.LayerSpec):
+    def __init__(self, activation: common_spec.Activation = common_spec.Activation.RELU):
+        self.linear1 = common_spec.LinearSpec()
+        self.linear2 = common_spec.LinearSpec()
+        self.activation = np.dtype("int8").type(activation)
 
 class WhisperNmtSpec(model_spec.SequenceToSequenceModelSpec):
-    """Describes a WhisperNmt model.
-
-    The specification is invariant to hidden dimensions but requires to
-    explicitly set the number of layers and attention heads.
-    """
+    """Describes a Whisper model."""
 
     def __init__(
-            self, encoder: TransformerEncoderSpec, decoder: TransformerDecoderSpec
+            self,
+            transformer_encoder: TransformerEncoderSpec,
+            transformer_decoder: TransformerDecoderSpec,
+            connector: WhisperNmtConnectorSpec,
+            whisper_encoder: WhisperEncoderSpec,
     ):
         """Initializes a Transformer model specification.
 
         Args:
-          encoder: The encoder specification.
-          decoder: The decoder specification.
+          transformer_encoder: The encoder specification of nmt module.
+          transformer_decoder: The decoder specification of nmt module.
+          whisper_encoder: The encoder specification of whisper module.
         """
-        if not isinstance(encoder, TransformerEncoderSpec):
-            raise TypeError("encoder argument must be a TransformerEncoderSpec")
-        if not isinstance(decoder, TransformerDecoderSpec):
-            raise TypeError("decoder argument must be a TransformerDecoderSpec")
-
         super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
+        self.transformer_encoder = transformer_encoder
+        self.transformer_decoder = transformer_decoder
+        self.whisper_encoder = whisper_encoder
+        self.connector = connector
         self._config.add_attribute(
-            "multi_query_attention", self.encoder.multi_query_attention
+            "multi_query_attention", self.transformer_encoder.multi_query_attention
         )
 
     @classmethod
@@ -527,6 +429,8 @@ class WhisperNmtSpec(model_spec.SequenceToSequenceModelSpec):
             cls,
             num_layers: Union[int, Tuple[int, int]],
             num_heads: int,
+            whisper_encoder_num_layers: int,
+            whisper_encoder_num_heads: int,
             with_relative_position: bool = False,
             pre_norm: bool = True,
             no_final_norm: bool = False,
@@ -547,6 +451,8 @@ class WhisperNmtSpec(model_spec.SequenceToSequenceModelSpec):
           num_layers: Number of encoder and decoder layers, or a 2-tuple if the
             number is different.
           num_heads: Number of attention heads.
+          whisper_encoder_num_layers: Number of encoder layers for whisper module.
+          whisper_encoder_num_heads: Number of attention heads for whisper module.
           with_relative_position: Use relative position representations in the self-attention
             layers as described in https://arxiv.org/abs/1803.02155.
           pre_norm: Enable the pre-norm Transformer architecture.
@@ -602,232 +508,26 @@ class WhisperNmtSpec(model_spec.SequenceToSequenceModelSpec):
             multi_query_attention=multi_query_attention,
         )
 
-        return cls(encoder, decoder)
+        connector = WhisperNmtConnectorSpec(activation=activation)
+        whisper_encoder = WhisperEncoderSpec(num_layers=whisper_encoder_num_layers, num_heads=whisper_encoder_num_heads)
+
+        return cls(encoder, decoder, connector, whisper_encoder)
 
     @property
     def name(self):
-        return "TransformerSpec"
+        return "WhisperNmtSpec"
 
     @property
     def revision(self):
         return 7
 
     def get_default_config(self):
-        return TransformerConfig()
+        return WhisperNmtConfig()
 
     def get_source_vocabulary_size(self):
-        return [spec.weight.shape[0] for spec in self.encoder.embeddings]
+        return [spec.weight.shape[0] for spec in self.transformer_encoder.embeddings]
 
     def get_target_vocabulary_size(self):
-        return self.decoder.embeddings.weight.shape[0]
-class TransformerDecoderModelConfig(model_spec.LanguageModelConfig):
-    """Configuration for Transformer decoder models."""
-
-    def __init__(self, layer_norm_epsilon: Optional[float] = None, **kwargs):
-        """Initializes the configuration for Transformer decoder models.
-
-        Args:
-          layer_norm_epsilon: The layer norm epsilon value.
-          **kwargs: Additional configuration.
-        """
-        super().__init__(layer_norm_epsilon=layer_norm_epsilon, **kwargs)
+        return self.transformer_decoder.embeddings.weight.shape[0]
 
 
-class TransformerDecoderModelSpec(model_spec.LanguageModelSpec):
-    """Describes a Transformer decoder model (e.g. GPT-2)."""
-
-    def __init__(self, decoder: TransformerDecoderSpec):
-        """Initializes a Transformer decoder model specification.
-
-        Args:
-          decoder: The decoder specification.
-        """
-        if not isinstance(decoder, TransformerDecoderSpec):
-            raise TypeError("decoder argument must be a TransformerDecoderSpec")
-
-        super().__init__()
-        self.decoder = decoder
-        for key, value in self.decoder.config.items():
-            self._config.add_attribute(key, value)
-
-    @classmethod
-    def from_config(
-        cls,
-        num_layers: int,
-        num_heads: int,
-        pre_norm: bool = True,
-        activation: common_spec.Activation = common_spec.Activation.RELU,
-        layernorm_embedding: bool = False,
-        no_final_norm: bool = False,
-        project_in_out: bool = False,
-        with_relative_position: bool = False,
-        ffn_glu: bool = False,
-        rms_norm: bool = False,
-        alibi: bool = False,
-        alibi_use_positive_positions: bool = False,
-        scale_alibi: bool = False,
-        rotary_dim: Optional[int] = None,
-        rotary_interleave: bool = True,
-        rotary_scaling_type: Optional[attention_spec.RotaryScalingType] = None,
-        rotary_scaling_factor: float = 1,
-        rotary_base: float = 10000,
-        original_max_position_embeddings: int = 0,
-        max_position_embeddings: int = 0,
-        parallel_residual: bool = False,
-        shared_layer_norm: bool = False,
-        pre_post_layer_norm: bool = False,
-        multi_query_attention: bool = False,
-        num_heads_kv: Optional[int] = None,
-        head_dim: Optional[int] = None,
-        sliding_window: Optional[int] = None,
-        quant_type: Optional[common_spec.Quantization] = None,
-        quant_group_size: Optional[int] = None,
-        quant_bits: Optional[int] = None,
-    ):
-        """Creates a Transformer decoder model specification.
-
-        Args:
-          num_layers: Number of decoder layers.
-          num_heads: Number of attention heads.
-          pre_norm: Enable the pre-norm Transformer architecture.
-          activation: Activation to apply in the feed-forward network.
-          layernorm_embedding: Apply layer normalization after the embedding layer.
-          no_final_norm: Do not apply layer normalization after the last decoder block.
-          project_in_out: Add a linear layer after the embedding layer and another one
-            before the final output projection.
-          with_relative_position: Enable relative position representations modules.
-          ffn_glu: Use gated linear units in the FFN layers as described in
-            https://arxiv.org/abs/2002.05202.
-          rms_norm: Use the root mean square layer normalization.
-          alibi: Use attention with linear biases.
-          alibi_use_positive_positions: Use positive positions in the ALiBi definition.
-          scale_alibi: Apply the dot product scale factor to ALiBi.
-          rotary_dim: Apply rotary embeddings to these first N dimensions. If 0, rotary
-            embeddings are applied to all dimensions.
-          rotary_interleave: Interleave the head dimensions when rotary embeddings are applied.
-            Otherwise the head dimensions are sliced in half.
-          rotary_scaling_type: Type of RoPE scaling.
-          rotary_scaling_factor: Factor used in the RoPE scaling.
-          rotary_base: The base period of the rotary embeddings.
-          original_max_position_embeddings: The original max position embeddings
-            for Su rope embeddings
-          max_position_embeddings: The max position embeddings for Su rope embeddings
-          parallel_residual: Use parallel residual connections in each layer block, as used
-            by the GPT-J and GPT-NeoX models.
-          shared_layer_norm: When using parallel residual, share the input and post
-            attention layer norms.
-          pre_post_layer_norm: add post layer norm for each pre norm layer
-          multi_query_attention: Use multi-query attention (alias for num_heads_kv=1).
-          num_heads_kv: Number of attention heads for the key and value.
-          head_dim: Number of head
-          sliding_window: max sequence length to retain KV cache
-          quant_type: quantization type used (like awq... for lower bit quantization)
-          quant_group_size: group size of the lower bit quantization
-          quant_bits: number of bit of the quantization (ex: 4bit)
-        """
-        decoder = TransformerDecoderSpec(
-            num_layers,
-            num_heads,
-            pre_norm=pre_norm,
-            activation=activation,
-            layernorm_embedding=layernorm_embedding,
-            with_encoder_attention=False,
-            no_final_norm=no_final_norm,
-            project_in_out=project_in_out,
-            relative_position=with_relative_position,
-            ffn_glu=ffn_glu,
-            rms_norm=rms_norm,
-            alibi=alibi,
-            alibi_use_positive_positions=alibi_use_positive_positions,
-            scale_alibi=scale_alibi,
-            rotary_dim=rotary_dim,
-            rotary_interleave=rotary_interleave,
-            rotary_scaling_type=rotary_scaling_type,
-            rotary_scaling_factor=rotary_scaling_factor,
-            rotary_base=rotary_base,
-            original_max_position_embeddings=original_max_position_embeddings,
-            max_position_embeddings=max_position_embeddings,
-            parallel_residual=parallel_residual,
-            shared_layer_norm=shared_layer_norm,
-            pre_post_layer_norm=pre_post_layer_norm,
-            multi_query_attention=multi_query_attention,
-            num_heads_kv=num_heads_kv,
-            head_dim=head_dim,
-            sliding_window=sliding_window,
-            quant_type=quant_type,
-            quant_group_size=quant_group_size,
-            quant_bits=quant_bits,
-        )
-
-        return cls(decoder)
-
-    @property
-    def name(self):
-        return "TransformerDecoderSpec"
-
-    @property
-    def revision(self):
-        return 8
-
-    def get_default_config(self):
-        return TransformerDecoderModelConfig()
-
-    def get_vocabulary_size(self):
-        return self.decoder.embeddings.weight.shape[0]
-
-
-class TransformerEncoderModelConfig(model_spec.LanguageModelConfig):
-    """Configuration for Transformer encoder models."""
-
-    def __init__(self, layer_norm_epsilon: Optional[float] = None, **kwargs):
-        """Initializes the configuration for Transformer encoder models.
-
-        Args:
-          layer_norm_epsilon: The layer norm epsilon value.
-          **kwargs: Additional configuration.
-        """
-        super().__init__(layer_norm_epsilon=layer_norm_epsilon, **kwargs)
-
-
-class TransformerEncoderModelSpec(model_spec.LanguageModelSpec):
-    """Describes a Transformer encoder model (e.g. BERT)."""
-
-    def __init__(
-        self,
-        encoder: TransformerEncoderSpec,
-        pooling_layer: bool = False,
-        pooling_activation: common_spec.Activation = common_spec.Activation.Tanh,
-    ):
-        """Initializes a Transformer encoder model specification.
-
-        Args:
-          encoder: The encoder specification.
-          pooling_layer: Add the pooling layer.
-          pooling_activation: The activation to apply after the pooling layer.
-        """
-        if not isinstance(encoder, TransformerEncoderSpec):
-            raise TypeError("encoder argument must be a TransformerEncoderSpec")
-
-        super().__init__()
-        self.encoder = encoder
-        self._config.add_attribute(
-            "multi_query_attention", self.encoder.multi_query_attention
-        )
-
-        if pooling_layer:
-            self.pooler_dense = common_spec.LinearSpec()
-            self.pooler_activation = np.dtype("int8").type(pooling_activation)
-
-    @property
-    def name(self):
-        return "TransformerEncoderSpec"
-
-    @property
-    def revision(self):
-        return 1
-
-    def get_default_config(self):
-        return TransformerEncoderModelConfig()
-
-    def get_vocabulary_size(self):
-        return self.encoder.embeddings[0].weight.shape[0]
