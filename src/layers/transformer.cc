@@ -364,35 +364,29 @@ namespace ctranslate2 {
     }
 
     void TransformerEncoder::operator()(const StorageView& input,
-                                        const std::vector<StorageView>& language_ids,
-                                        const std::vector<StorageView>& eos_ids,
+                                        const std::vector<StorageView>& source_features_prefix,
+                                        const std::vector<StorageView>& source_features_suffix,
                                         const StorageView* lengths,
                                         StorageView& output) {
       PROFILE("TransformerEncoder");
       StorageView lang_input(output.dtype(), output.device());
-      _embeddings(language_ids, lang_input);
+      _embeddings(source_features_prefix, lang_input);
 
       if (_embeddings_scale)
         ops::Mul()(lang_input, *_embeddings_scale, lang_input);
-      if (_position_encoder)
-        (*_position_encoder)(lang_input);
-      if (_layernorm_embedding)
-        (*_layernorm_embedding)(lang_input, lang_input);
 
       StorageView eos_input(output.dtype(), output.device());
-      _embeddings(eos_ids, eos_input);
+      _embeddings(source_features_suffix, eos_input);
 
       if (_embeddings_scale)
         ops::Mul()(eos_input, *_embeddings_scale, eos_input);
-      if (_position_encoder)
-        (*_position_encoder)(eos_input);
-      if (_layernorm_embedding)
-        (*_layernorm_embedding)(eos_input, eos_input);
 
       // Concatenate the language embeddings and input and eos embeddings.
       StorageView input_concat(output.dtype(), output.device());
       ops::Concat(1)({&lang_input, &input, &eos_input}, input_concat);
 
+      if (_position_encoder)
+        (*_position_encoder)(input_concat);
       StorageView hidden = input_concat;
       const dim_t max_time = input_concat.dim(1);
 
@@ -415,7 +409,6 @@ namespace ctranslate2 {
       }
 
       StorageView position_bias(output.dtype(), output.device());
-
       for (size_t l = 0; l < _layers.size(); ++l) {
         (*_layers[l])(hidden, lengths_mask.get(), output, padder.get(), &position_bias);
         if (l + 1 < _layers.size())

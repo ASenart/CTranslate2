@@ -83,18 +83,13 @@ namespace ctranslate2 {
 
     WhisperConnector::WhisperConnector(const models::Model &model, const std::string &scope)
       : _activation_type(ops::ActivationType::ReLU)
-      , _lin_1(model, scope + "/linear1", &_activation_type)
-      , _lin_2(model, scope + "/linear2") {
+      , _conv(model, scope + "/conv", 1, 1, 1, 1) {
     }
 
     void WhisperConnector::operator()(const StorageView &features, StorageView &output) const {
       PROFILE("WhisperConnector");
       StorageView hidden(features.dtype(), features.device());
-      StorageView intermediate(features.dtype(), features.device());
-      ops::Transpose({0, 2, 1})(features, hidden);
-      _lin_1(hidden, intermediate);
-      _lin_2(intermediate, output);
-      ops::Transpose({0, 2, 1})(output, hidden);
+      _conv(features, hidden);
       output = std::move(hidden);
     }
   }

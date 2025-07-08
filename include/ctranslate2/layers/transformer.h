@@ -135,8 +135,8 @@ namespace ctranslate2 {
                       StorageView& output) override;
 
       void operator()(const StorageView& input,
-                      const std::vector<StorageView>& language_ids,
-                      const std::vector<StorageView>& target_ids,
+                      const std::vector<StorageView>& source_features_prefix,
+                      const std::vector<StorageView>& source_features_suffix,
                       const StorageView* lengths,
                       StorageView& output);
 

@@ -393,10 +393,8 @@ class WhisperEncoderSpec(model_spec.LayerSpec):
         ]
 
 class WhisperNmtConnectorSpec(model_spec.LayerSpec):
-    def __init__(self, activation: common_spec.Activation = common_spec.Activation.RELU):
-        self.linear1 = common_spec.LinearSpec()
-        self.linear2 = common_spec.LinearSpec()
-        self.activation = np.dtype("int8").type(activation)
+    def __init__(self):
+        self.conv = common_spec.Conv1DSpec()
 
 class WhisperNmtSpec(model_spec.SequenceToSequenceModelSpec):
     """Describes a Whisper model."""
@@ -508,7 +506,7 @@ class WhisperNmtSpec(model_spec.SequenceToSequenceModelSpec):
             multi_query_attention=multi_query_attention,
         )
 
-        connector = WhisperNmtConnectorSpec(activation=activation)
+        connector = WhisperNmtConnectorSpec()
         whisper_encoder = WhisperEncoderSpec(num_layers=whisper_encoder_num_layers, num_heads=whisper_encoder_num_heads)
 
         return cls(encoder, decoder, connector, whisper_encoder)

@@ -446,8 +446,7 @@ def set_transformer_spec(spec, variables):
     set_transformer_decoder(spec.transformer_decoder, variables)
 
 def set_whisper_reshape(spec, variables):
-    set_linear(spec.linear1, variables, "lin_1")
-    set_linear(spec.linear2, variables, "lin_2")
+    set_conv(spec.conv, variables, "conv")
 
 def set_transformer_encoder(spec, variables):
     set_input_layers(spec, variables, "src_embeddings")
@@ -558,6 +557,12 @@ def set_layer_norm(spec, variables, scope):
 
 
 def set_linear(spec, variables, scope):
+    spec.weight = _get_variable(variables, "%s.weight" % scope)
+    bias = variables.get("%s.bias" % scope)
+    if bias is not None:
+        spec.bias = bias
+
+def set_conv(spec, variables, scope):
     spec.weight = _get_variable(variables, "%s.weight" % scope)
     bias = variables.get("%s.bias" % scope)
     if bias is not None:

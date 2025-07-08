@@ -78,17 +78,16 @@ namespace ctranslate2 {
       void operator()(const StorageView& features, StorageView& output) const;
 
       DataType output_type() const override {
-        return _lin_2.output_type();
+        return _conv.output_type();
       }
 
       dim_t output_size() const override {
-        return _lin_2.output_size();
+        return _conv.output_size();
       }
 
     private:
       const ops::ActivationType _activation_type;
-      const Dense _lin_1;
-      const Dense _lin_2;
+      const Conv1D _conv;
     };
   }
 }

@@ -104,7 +104,7 @@ namespace ctranslate2 {
       size_t max_input_length = 1024;
     };
 
-    struct WhisperNmtGenerationResult {
+    struct WhisperNmtTranslationResult {
       std::vector<std::vector<std::string>> sequences;
       //std::vector<std::vector<size_t>> sequences_ids;
       std::vector<float> scores;
@@ -186,30 +186,31 @@ namespace ctranslate2 {
 
       StorageView encode(StorageView features, const bool to_cpu);
 
-      std::vector<WhisperNmtGenerationResult>
-      generate(StorageView features,
-               const std::vector<std::string>& language,
-               const std::vector<std::vector<std::string>>& eos,
-               const WhisperNmtOptions& options);
+      std::vector<WhisperNmtTranslationResult>
+      translate(StorageView features,
+                const std::vector<std::vector<std::string>>& source_prefix,
+                const std::vector<std::vector<std::string>>& target_prefix,
+                const WhisperNmtOptions& options);
 
-      std::vector<std::vector<std::vector<size_t>>>
-      make_source_ids(const std::vector<std::vector<std::vector<std::string>>>& source_features,
-                                         size_t max_length) const;
       std::vector<std::vector<size_t>>
-      make_target_ids(const std::vector<std::vector<std::string>>& target,
-                      size_t max_length,
-                      bool is_prefix) const;
+      make_source_prefix_ids(const std::vector<std::vector<std::string>>& source) const;
+
+      std::vector<std::vector<size_t>>
+      make_target_prefix_ids(const std::vector<std::vector<std::string>>& target) const;
+
+      std::vector<std::vector<size_t>>
+      make_suffix_ids(const std::vector<std::vector<std::string>>& target) const;
 
     private:
-      std::vector<WhisperNmtGenerationResult>
+      std::vector<WhisperNmtTranslationResult>
       _run_translation(StorageView& features,
-                      const std::vector<std::string>& language,
-                      const std::vector<std::vector<std::string>>& eos,
-                      const WhisperNmtOptions& options);
+                       const std::vector<std::vector<std::string>>& source_prefix,
+                       const std::vector<std::vector<std::string>>& target_prefix,
+                       const WhisperNmtOptions& options);
       void
       _nmt_encode(StorageView& features_ids,
-                  const std::vector<std::vector<std::vector<size_t>>>& language_ids,
-                  const std::vector<std::vector<std::vector<size_t>>>& eos_ids,
+                  const std::vector<std::vector<size_t>>& sources_prefix,
+                  const std::vector<std::vector<size_t>>& sources_suffix,
                   StorageView& memory,
                   StorageView& memory_lengths);
       const std::shared_ptr<const WhisperNmtModel> _model;
@@ -239,11 +240,11 @@ namespace ctranslate2 {
 
       std::future<StorageView> encode(const StorageView& features, const bool to_cpu);
 
-      std::vector<std::future<WhisperNmtGenerationResult>>
-      generate(const StorageView& features,
-               std::vector<std::string>& language,
-               std::vector<std::vector<std::string>>& eos,
-               WhisperNmtOptions options = {});
+      std::vector<std::future<WhisperNmtTranslationResult>>
+      translate(const StorageView& features,
+                const std::vector<std::vector<std::string>>& source_prefix,
+                const std::vector<std::vector<std::string>>& target_prefix,
+                WhisperNmtOptions options = {});
     };
 
   }

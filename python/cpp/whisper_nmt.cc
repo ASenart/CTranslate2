@@ -7,6 +7,21 @@
 namespace ctranslate2 {
   namespace python {
 
+    using BatchTokensOptional = std::optional<std::vector<std::optional<Tokens>>>;
+
+    static BatchTokens finalize_optional_batch(const BatchTokensOptional& optional) {
+      // Convert missing values to empty vectors.
+      BatchTokens batch;
+      if (!optional)
+        return batch;
+      batch.reserve(optional->size());
+      for (const auto& tokens : *optional) {
+        batch.emplace_back(tokens.value_or(Tokens()));
+      }
+      return batch;
+    }
+
+
     class WhisperNmtWrapper : public ReplicaPoolHelper<models::WhisperNmt> {
     public:
       using ReplicaPoolHelper::ReplicaPoolHelper;
@@ -27,11 +42,11 @@ namespace ctranslate2 {
         return _pool->encode(features, to_cpu).get();
       }
 
-      std::variant<std::vector<models::WhisperNmtGenerationResult>,
-        std::vector<AsyncResult<models::WhisperNmtGenerationResult>>>
-      generate(const StorageView &features,
-               Tokens language,
-               BatchTokens eos,
+      std::variant<std::vector<models::WhisperNmtTranslationResult>,
+        std::vector<AsyncResult<models::WhisperNmtTranslationResult>>>
+      translate(const StorageView &features,
+               const BatchTokensOptional& source_prefix,
+               const BatchTokensOptional& target_prefix,
                bool asynchronous,
                size_t beam_size,
                float patience,
@@ -62,7 +77,7 @@ namespace ctranslate2 {
                bool return_end_token,
                size_t max_input_length
       ) {
-        std::vector<std::future<models::WhisperNmtGenerationResult>> futures;
+        std::vector<std::future<models::WhisperNmtTranslationResult>> futures;
 
         models::WhisperNmtOptions options;
         options.beam_size = beam_size;
@@ -101,26 +116,29 @@ namespace ctranslate2 {
         std::shared_lock lock(_mutex);
         assert_model_is_ready();
 
-        futures = _pool->generate(features, language, eos, options);
+        futures = _pool->translate(features,
+                                   finalize_optional_batch(source_prefix),
+                                   finalize_optional_batch(target_prefix),
+                                   options);
 
         return maybe_wait_on_futures(std::move(futures), asynchronous);
       }
     };
 
     void register_whisper_nmt(py::module& m) {
-      py::class_<models::WhisperNmtGenerationResult>(m, "WhisperNmtGenerationResult",
+      py::class_<models::WhisperNmtTranslationResult>(m, "WhisperNmtGenerationResult",
                                                   "A generation result from the Whisper model.")
 
-        .def_readonly("sequences", &models::WhisperNmtGenerationResult::sequences,
+        .def_readonly("sequences", &models::WhisperNmtTranslationResult::sequences,
                       "Generated sequences of tokens.")
-        .def_readonly("scores", &models::WhisperNmtGenerationResult::scores,
+        .def_readonly("scores", &models::WhisperNmtTranslationResult::scores,
                       "Score of each sequence (empty if :obj:`return_scores` was disabled).")
-        .def_readonly("logits", &models::WhisperNmtGenerationResult::attention,
+        .def_readonly("logits", &models::WhisperNmtTranslationResult::attention,
                       "logits in each sequence (empty if :obj:`return_logits_vocab` was disabled).")
-        .def_readonly("no_speech_prob", &models::WhisperNmtGenerationResult::no_speech_prob,
+        .def_readonly("no_speech_prob", &models::WhisperNmtTranslationResult::no_speech_prob,
                       "Probability of the no speech token (0 if :obj:`return_no_speech_prob` was disabled).")
 
-        .def("__repr__", [](const models::WhisperNmtGenerationResult& result) {
+        .def("__repr__", [](const models::WhisperNmtTranslationResult& result) {
           return "WhisperNmtGenerationResult(sequences=" + std::string(py::repr(py::cast(result.sequences)))
             //+ ", sequences_ids=" + std::string(py::repr(py::cast(result.sequences_ids)))
             + ", scores=" + std::string(py::repr(py::cast(result.scores)))
@@ -130,7 +148,7 @@ namespace ctranslate2 {
         })
         ;
 
-      declare_async_wrapper<models::WhisperNmtGenerationResult>(m, "WhisperNmtGenerationResultAsync");
+      declare_async_wrapper<models::WhisperNmtTranslationResult>(m, "WhisperNmtGenerationResultAsync");
 
       py::class_<WhisperNmtWrapper>(
         m, "WhisperNmt",
@@ -215,10 +233,10 @@ namespace ctranslate2 {
                    The encoder output.
              )pbdoc")*/
 
-        .def("generate", &WhisperNmtWrapper::generate,
+        .def("translate", &WhisperNmtWrapper::translate,
              py::arg("features"),
-             py::arg("language"),
-             py::arg("eos"),
+             py::arg("source_prefix")=py::none(),
+             py::arg("target_prefix")=py::none(),
              py::kw_only(),
              py::arg("asynchronous")=false,
              py::arg("beam_size")=5,
@@ -251,7 +269,7 @@ namespace ctranslate2 {
              py::arg("max_input_length")=1024,
              py::call_guard<py::gil_scoped_release>(),
              R"pbdoc(
-                 Encodes the input features and generates from the given prompt.
+                 Encodes the input features and translate from the given audio.
 
                  Arguments:
                    features: Mel spectogram of the audio, as a float array with shape

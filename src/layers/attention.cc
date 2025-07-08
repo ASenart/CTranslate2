@@ -507,7 +507,6 @@ namespace ctranslate2 {
         combine_heads(context, _num_heads, queries_padder, beam_size);
       }
       _linear.back()(context, output);
-
       if (_tensor_parallel) {
         Shape shape = output.shape();
         StorageView tmp(std::move(shape), output.dtype(), output.device());
