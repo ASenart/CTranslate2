@@ -76,15 +76,6 @@ namespace ctranslate2 {
       }
 
       void WhisperNmtModel::initialize(ModelReader &model_reader) {
-        //VocabularyInfo vocab_info;
-        //vocab_info.unk_token = "<|endoftext|>";
-        //vocab_info.bos_token = "<|startoftranscript|>";
-        //vocab_info.eos_token = "<|endoftext|>";
-
-        //_vocabulary = load_vocabulary(model_reader, "shared_vocabulary", std::move(vocab_info));
-        //if (!_vocabulary)
-        //  throw std::runtime_error("Cannot load the vocabulary from the model directory");
-        // load vocabularies for nmt encoder and decoder
         load_vocabularies(model_reader);
       }
 
@@ -276,6 +267,7 @@ namespace ctranslate2 {
       std::vector<WhisperNmtTranslationResult>
       WhisperNmtReplica::translate(StorageView features,
                                    const std::vector<std::vector<std::string>>& source_prefix,
+                                   const std::vector<std::vector<std::string>>& source_suffix,
                                    const std::vector<std::vector<std::string>>& target_prefix,
                                    const WhisperNmtOptions &options) {
         PROFILE("WhisperReplica::translate");
@@ -291,6 +283,10 @@ namespace ctranslate2 {
         if (source.empty())
           source.resize(features.shape()[0]);
 
+        auto source_suf = source_suffix;
+        if (source_suf.empty())
+          source_suf.resize(features.shape()[0]);
+
         const auto &vocabulary = _model->get_vocabulary();
         const auto scoped_device_setter = _model->get_scoped_device_setter();
 
@@ -302,6 +298,7 @@ namespace ctranslate2 {
         // NMT
         std::vector<WhisperNmtTranslationResult> final_results = _run_translation(mlp_output,
                                                                                   source,
+                                                                                  source_suf,
                                                                                   target,
                                                                                   options);
 
@@ -338,7 +335,7 @@ namespace ctranslate2 {
       }
 
       std::vector<std::vector<size_t>>
-      WhisperNmtReplica::make_source_prefix_ids(const std::vector<std::vector<std::string>>& source) const {
+      WhisperNmtReplica::make_source_ids(const std::vector<std::vector<std::string>>& source) const {
         const auto &target_vocabulary = _model->get_source_vocabulary(0);
         return target_vocabulary.to_ids(source, 0, nullptr, nullptr);
       }
@@ -351,19 +348,10 @@ namespace ctranslate2 {
         return target_vocabulary.to_ids(target, 0, prefix, nullptr);
       }
 
-      std::vector<std::vector<size_t>>
-      WhisperNmtReplica::make_suffix_ids(const std::vector<std::vector<std::string>>& target) const {
-        const auto &target_vocabulary = _model->get_target_vocabulary();
-        const std::string *suffix = &target_vocabulary.eos_token();
-        std::vector<std::vector<std::string>> ids;
-        ids.resize(target.size());
-
-        return target_vocabulary.to_ids(ids , 0, nullptr, suffix);
-      }
-
       std::vector<WhisperNmtTranslationResult>
       WhisperNmtReplica::_run_translation(StorageView &features,
                                           const std::vector<std::vector<std::string>> &source_prefix,
+                                          const std::vector<std::vector<std::string>> &source_suffix,
                                           const std::vector<std::vector<std::string>> &target_prefix,
                                           const WhisperNmtOptions &options) {
         const auto scoped_device_setter = _model->get_scoped_device_setter();
@@ -372,10 +360,10 @@ namespace ctranslate2 {
 
         const size_t batch_size = features.shape()[0];
 
-        const auto sources_prefix = make_source_prefix_ids(source_prefix);
+        const auto sources_prefix = make_source_ids(source_prefix);
         const auto start_tokens = make_target_prefix_ids(target_prefix);
 
-        const auto sources_suffix = make_suffix_ids(target_prefix);
+        const auto sources_suffix = make_source_ids(source_suffix);
         // Encode the sequence.
         StorageView memory(_encoder->output_type(), device);
         StorageView memory_lengths(DataType::INT32, device);
@@ -535,16 +523,18 @@ namespace ctranslate2 {
       std::vector<std::future<WhisperNmtTranslationResult>>
       WhisperNmt::translate(const StorageView &features,
                             const std::vector<std::vector<std::string>>& source_prefix,
+                            const std::vector<std::vector<std::string>>& source_suffix,
                             const std::vector<std::vector<std::string>>& target_prefix,
                             WhisperNmtOptions options) {
         const size_t batch_size = features.dim(0);
         return post_batch<WhisperNmtTranslationResult>(
                 [features = features.sync_copy(),
                         source_prefix = std::move(source_prefix),
+                        source_suffix = std::move(source_suffix),
                         target_prefix = std::move(target_prefix),
                         options = std::move(options)]
                         (WhisperNmtReplica &replica) mutable {
-                    return replica.translate(std::move(features), source_prefix, target_prefix, options);
+                    return replica.translate(std::move(features), source_prefix, source_suffix, target_prefix, options);
                 },
                 batch_size);
       }

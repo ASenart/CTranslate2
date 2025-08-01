@@ -446,17 +446,17 @@ def set_transformer_spec(spec, variables):
     set_transformer_decoder(spec.transformer_decoder, variables)
 
 def set_whisper_reshape(spec, variables):
-    set_conv(spec.conv, variables, "conv")
+    set_conv(spec.conv, variables, "reshaper.conv")
 
 def set_transformer_encoder(spec, variables):
-    set_input_layers(spec, variables, "src_embeddings")
+    set_input_layers(spec, variables, "src_embeddings.word_embeddings")
     set_layer_norm(spec.layer_norm, variables, "encoder.norm")
     for i, layer in enumerate(spec.layer):
         set_transformer_encoder_layer(layer, variables, "encoder.layers.%d" % i)
 
 
 def set_transformer_decoder(spec, variables, with_encoder_attention=True):
-    set_input_layers(spec, variables, "tgt_embeddings")
+    set_input_layers(spec, variables, "tgt_embeddings.word_embeddings")
     set_layer_norm(spec.layer_norm, variables, "decoder.norm")
     for i, layer in enumerate(spec.layer):
         set_transformer_decoder_layer(
@@ -466,7 +466,8 @@ def set_transformer_decoder(spec, variables, with_encoder_attention=True):
             with_encoder_attention=with_encoder_attention,
         )
 
-    set_linear(spec.projection, variables, "output_layer")
+    set_linear(spec.projection, variables, "tgt_embeddings.word_embeddings")
+    set_bias(spec.projection, variables, "output_layer.bias")
     #try:
     #    set_linear(spec.projection, variables, "generator")
     #except KeyError:
@@ -479,7 +480,7 @@ def set_input_layers(spec, variables, scope):
         set_position_encodings(
             spec.position_encodings,
             variables,
-            "position_encodings",
+            scope.replace("word_embeddings", "position_embeddings"),
         )
     else:
         # See https://github.com/OpenNMT/OpenNMT-py/issues/1722
@@ -559,6 +560,11 @@ def set_layer_norm(spec, variables, scope):
 def set_linear(spec, variables, scope):
     spec.weight = _get_variable(variables, "%s.weight" % scope)
     bias = variables.get("%s.bias" % scope)
+    if bias is not None:
+        spec.bias = bias
+
+def set_bias(spec, variables, scope):
+    bias = variables.get(scope)
     if bias is not None:
         spec.bias = bias
 

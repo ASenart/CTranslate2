@@ -189,22 +189,22 @@ namespace ctranslate2 {
       std::vector<WhisperNmtTranslationResult>
       translate(StorageView features,
                 const std::vector<std::vector<std::string>>& source_prefix,
+                const std::vector<std::vector<std::string>>& source_suffix,
                 const std::vector<std::vector<std::string>>& target_prefix,
                 const WhisperNmtOptions& options);
 
       std::vector<std::vector<size_t>>
-      make_source_prefix_ids(const std::vector<std::vector<std::string>>& source) const;
+      make_source_ids(const std::vector<std::vector<std::string>>& source) const;
 
       std::vector<std::vector<size_t>>
       make_target_prefix_ids(const std::vector<std::vector<std::string>>& target) const;
 
-      std::vector<std::vector<size_t>>
-      make_suffix_ids(const std::vector<std::vector<std::string>>& target) const;
 
     private:
       std::vector<WhisperNmtTranslationResult>
       _run_translation(StorageView& features,
                        const std::vector<std::vector<std::string>>& source_prefix,
+                       const std::vector<std::vector<std::string>>& source_suffix,
                        const std::vector<std::vector<std::string>>& target_prefix,
                        const WhisperNmtOptions& options);
       void
@@ -243,6 +243,7 @@ namespace ctranslate2 {
       std::vector<std::future<WhisperNmtTranslationResult>>
       translate(const StorageView& features,
                 const std::vector<std::vector<std::string>>& source_prefix,
+                const std::vector<std::vector<std::string>>& source_suffix,
                 const std::vector<std::vector<std::string>>& target_prefix,
                 WhisperNmtOptions options = {});
     };

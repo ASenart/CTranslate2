@@ -46,6 +46,7 @@ namespace ctranslate2 {
         std::vector<AsyncResult<models::WhisperNmtTranslationResult>>>
       translate(const StorageView &features,
                const BatchTokensOptional& source_prefix,
+               const BatchTokensOptional& source_suffix,
                const BatchTokensOptional& target_prefix,
                bool asynchronous,
                size_t beam_size,
@@ -118,6 +119,7 @@ namespace ctranslate2 {
 
         futures = _pool->translate(features,
                                    finalize_optional_batch(source_prefix),
+                                   finalize_optional_batch(source_suffix),
                                    finalize_optional_batch(target_prefix),
                                    options);
 
@@ -236,6 +238,7 @@ namespace ctranslate2 {
         .def("translate", &WhisperNmtWrapper::translate,
              py::arg("features"),
              py::arg("source_prefix")=py::none(),
+             py::arg("source_suffix")=py::none(),
              py::arg("target_prefix")=py::none(),
              py::kw_only(),
              py::arg("asynchronous")=false,
